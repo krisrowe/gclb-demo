@@ -1,0 +1,17 @@
+steps:
+# This build step clones a remote public repository from Github; no
+# credentials are required.
+- name: 'gcr.io/cloud-builders/git'
+  args: ['clone', 'https://github.com/krisrowe/stubbed-service']
+# Install dependencies
+- name: node
+  entrypoint: npm
+  args: ['install']
+# Docker build
+- name: 'gcr.io/cloud-builders/docker'
+  args: [ 'build', '-t', 'gcr.io/${PROJECT_ID}/stubbed-service', './stubbed-service' ]
+# Push new image to Google Cloud
+#- name: 'gcr.io/cloud-builders/docker'
+#  args: ['push', 'gcr.io/$PROJECT_ID/stubbed-service']
+images:
+- gcr.io/${PROJECT_ID}/stubbed-service
