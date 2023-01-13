@@ -127,19 +127,33 @@ gcloud compute health-checks create http http-check-8080 --port 8080
 #### Configure LB Backend
 ##### Create Backend Service
 ```
-gcloud compute backend-services create web-backend-service \
+gcloud compute backend-services create stub-backend-service \
     --load-balancing-scheme=EXTERNAL \
     --protocol=HTTP \
     --port-name=stubweb \
-    --health-checks=http-basic-check \
+    --health-checks=http-check-8080 \
     --global
 
 ```
 ##### Attach Our Instance Group as the Backend for the Backend Service
 ```
-gcloud compute backend-services add-backend web-backend-service \
+gcloud compute backend-services add-backend stub-backend-service \
     --instance-group=stub-servers \
     --instance-group-zone=us-central1-a \
     --global
 ```
-  
+### Create the Frontend of the Load Balancer
+```
+gcloud compute url-maps create stub-lb \
+    --default-service stub-backend-service
+gcloud compute target-http-proxies create stub-lb-proxy \
+    --url-map=stub-lb
+```
+NOTE: add the --address argument with alias below if you reserve a static IP.
+``` 
+gcloud compute forwarding-rules create http-content-rule \
+    --load-balancing-scheme=EXTERNAL \
+    --global \
+    --target-http-proxy=stub-lb-proxy \
+    --ports=80    
+```
