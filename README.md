@@ -32,40 +32,23 @@ Below we use the `default` network, but if this is already in use, then select a
 export NETWORK_NAME=default
 gcloud compute networks create $NETWORK_NAME --project=${PROJECT_ID} --subnet-mode=auto --bgp-routing-mode=global 
 ```
-## Set up firewall rules to allow access to backend target instances for the load balancer
-### OPTIONAL: Allow instances to be pinged for diagnostics
+### Set up firewall rules to allow access to backend target instances for the load balancer
+#### Allow internal clients  port 8080 that the container runs on
+For simplicity of this guide/demo, we're allowing all internal clients to access the service
+running at port 8080 on the compute instances (VMs), even though our main goal is to allow
+the load balancer to access this service as the intended client. However, this will also give
+us the option to hit the service directly from another host on the network while testing/debugging.
 ```
-gcloud compute firewall-rules create default-allow-icmp --project=${PROJECT_ID} --network=projects/${PROJECT_ID}/global/networks/${NETWORK_NAME} --description=Allows\ ICMP\ connections\ from\ any\ source\ to\ any\ instance\ on\ the\ network. --direction=INGRESS --priority=65534 --source-ranges=0.0.0.0/0 --action=ALLOW --rules=icmp
+gcloud compute firewall-rules create allow-8080 --project=${PROJECT_ID} --network=projects/${PROJECT_ID}/global/networks/${NETWORK_NAME} --description="Allows connection from any source to any instance on the network using HTTP." --direction=INGRESS --source-ranges=10.128.0.0/9 --action=ALLOW --rules=tcp:8080 
 ```
-### OPTIONAL: Allow instances to be logged into via SSH for debugging
-```
-gcloud compute firewall-rules create default-allow-ssh --project=${PROJECT_ID} --network=projects/${PROJECT_ID}/global/networks/${NETWORK_NAME} --description=Allows\ TCP\ connections\ from\ any\ source\ to\ any\ instance\ on\ the\ network\ using\ port\ 22. --direction=INGRESS --priority=65534 --source-ranges=0.0.0.0/0 --action=ALLOW --rules=tcp:22
-```
-## Ensure that Compute API is enabled on this project to allow for VMs to be created
-gcloud services enable compute --project=${PROJECT_ID}
-
-
-# DEPRECATED (SKIP THIS): Give the Cloud Build service account permission to create compute instances.
-```
-export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)"
-
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/compute.admin
-```
-
-## Run the Cloud Build script to build the stubbed service and containerize it.
-```
-gcloud builds submit --project=${PROJECT_ID}
-```
-
-## Prepare the network so that internal VMs with no external IP can access the internet, as necessary to pull docker images.
-### Create a Cloud Router
+### Prepare the network so that internal VMs with no external IP can access the internet, as necessary to pull docker images.
+#### Create a Cloud Router
 ```
 gcloud compute routers create nat-router-us-central1 \
     --network ${NETWORK_NAME} \
     --region us-central1
 ```
-### Set up Cloud NAT on the router
+#### Set up Cloud NAT on the router
 ```
 gcloud compute routers nats create nat-config \
     --router-region us-central1 \
@@ -73,37 +56,90 @@ gcloud compute routers nats create nat-config \
     --nat-all-subnet-ip-ranges \
     --auto-allocate-nat-external-ips
 ```
-## Ensure the image is publicly accessible to all users for unauthenticated access, 
+#### OPTIONAL: Allow instances to be pinged for diagnostics
+```
+gcloud compute firewall-rules create default-allow-icmp --project=${PROJECT_ID} --network=projects/${PROJECT_ID}/global/networks/${NETWORK_NAME} --description=Allows\ ICMP\ connections\ from\ any\ source\ to\ any\ instance\ on\ the\ network. --direction=INGRESS --priority=65534 --source-ranges=0.0.0.0/0 --action=ALLOW --rules=icmp
+```
+#### OPTIONAL: Allow instances to be logged into via SSH for debugging
+```
+gcloud compute firewall-rules create default-allow-ssh --project=${PROJECT_ID} --network=projects/${PROJECT_ID}/global/networks/${NETWORK_NAME} --description=Allows\ TCP\ connections\ from\ any\ source\ to\ any\ instance\ on\ the\ network\ using\ port\ 22. --direction=INGRESS --priority=65534 --source-ranges=0.0.0.0/0 --action=ALLOW --rules=tcp:22
+```
+## Set up backend services on compute instances (VMs)
+### Ensure that Compute API is enabled on this project to allow for VMs to be created
+gcloud services enable compute --project=${PROJECT_ID}
+### DEPRECATED (SKIP THIS): Give the Cloud Build service account permission to create compute instances.
+This should no longer be needed, as we are separately creating the compute instances, outside Cloud Build.
+```
+export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)"
+
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/compute.admin
+```
+### Run the Cloud Build script to build the stubbed service and containerize it.
+```
+gcloud builds submit --project=${PROJECT_ID}
+```
+### Ensure the image is publicly accessible to all users for unauthenticated access, 
 This will be applicable when a new VM is spun up below and attempts to pull the image.
 ```
 gsutil iam ch allusers:objectViewer gs://artifacts.${PROJECT_ID}.appspot.com
 ```
-## Create a pair of VMs that run the container image
+### Create a pair of VMs that run the container image
 * the argument --no-address ensure the VM does not have a public IP address 
 * the argument --shielded-secure-boot avoids error for violation of constraints/compute.requireShieldedVm
 ```
-gcloud compute instances create-with-container instance-1 --container-image gcr.io/${PROJECT_ID}/stubbed-service --project=${PROJECT_ID} --zone=us-central1-a --network=${NETWORK_NAME} --no-address --shielded-secure-boot
+gcloud compute instances create-with-container instance-1 \
+    --container-image gcr.io/${PROJECT_ID}/stubbed-service \
+    --project=${PROJECT_ID} --zone=us-central1-a --network=${NETWORK_NAME} \
+    --no-address --shielded-secure-boot
 
-gcloud compute instances create-with-container instance-2 --container-image gcr.io/${PROJECT_ID}/stubbed-service --project=${PROJECT_ID} --zone=us-central1-a --network=${NETWORK_NAME} --no-address --shielded-secure-boot
+gcloud compute instances create-with-container instance-2 \
+    --container-image gcr.io/${PROJECT_ID}/stubbed-service \
+    --project=${PROJECT_ID} --zone=us-central1-a --network=${NETWORK_NAME} \
+    --no-address --shielded-secure-boot
 ```
-## Allow the port 8080 that the container runs on
-```
-gcloud compute firewall-rules create allow-8080 --project=${PROJECT_ID} --network=projects/${PROJECT_ID}/global/networks/${NETWORK_NAME} --description="Allows connection from any source to any instance on the network using HTTP." --direction=INGRESS --source-ranges=10.128.0.0/9 --action=ALLOW --rules=tcp:8080 
-```
-## Group the VM instances created so they can be load balanced
+### Group the VM instances created so they can be load balanced
 ``` 
-gcloud compute instance-groups unmanaged create stub-servers --project=lb-test-374518 --zone=us-central1-a
-gcloud compute instance-groups unmanaged set-named-ports stub-servers --project=lb-test-374518 --zone=us-central1-a \
+gcloud compute instance-groups unmanaged create stub-servers \
+    --project=lb-test-374518 --zone=us-central1-a
+gcloud compute instance-groups unmanaged set-named-ports stub-servers \
+    --project=lb-test-374518 --zone=us-central1-a \
     --named-ports=stubweb:8080
 gcloud compute instance-groups unmanaged add-instances stub-servers \
     --project=lb-test-374518 --zone=us-central1-a \
     --instances=instance-1,instance-2
 ```
-
-## Allow Google-managed service the access to do health checks for the load balancer we will create
+## Set up Load Balancing
+### Health Checks
+#### Allow Google-managed service the access to do health checks for the load balancer we will create
+```
 gcloud compute firewall-rules create allow-health-check \
     --network=${NETWORK_NAME} \
     --action=allow \
     --direction=ingress \
     --source-ranges=130.211.0.0/22,35.191.0.0/16 \
     --rules=tcp:8080
+```
+#### Configure the parameters for a named health check
+```
+gcloud compute health-checks create http http-check-8080 --port 8080
+```
+#### Configure LB Backend
+##### Create Backend Service
+```
+gcloud compute backend-services create web-backend-service \
+    --load-balancing-scheme=EXTERNAL \
+    --protocol=HTTP \
+    --port-name=stubweb \
+    --health-checks=http-basic-check \
+    --global
+
+```
+##### Attach Our Instance Group as the Backend for the Backend Service
+```
+gcloud compute backend-services add-backend web-backend-service \
+    --instance-group=stub-servers \
+    --instance-group-zone=us-central1-a \
+    --global
+```
+  
