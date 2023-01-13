@@ -6,12 +6,17 @@ steps:
 # Install dependencies
 - name: node
   entrypoint: npm
+  dir: 'stubbed-service'
   args: ['install']
 # Docker build
 - name: 'gcr.io/cloud-builders/docker'
   args: [ 'build', '-t', 'gcr.io/${PROJECT_ID}/stubbed-service', './stubbed-service' ]
 # Push new image to Google Cloud
-#- name: 'gcr.io/cloud-builders/docker'
-#  args: ['push', 'gcr.io/$PROJECT_ID/stubbed-service']
-images:
-- gcr.io/${PROJECT_ID}/stubbed-service
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/stubbed-service']
+# Spin up a VM that will run the container
+#- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+#  entrypoint: gcloud
+#  args: ['compute', 'instances', 'create-with-container', 'instance-1', 
+#    '--container-image', 'gcr.io/${PROJECT_ID}/stubbed-service', 
+#    '--project', '${PROJECT_ID}', '--zone', 'us-central1-a']
