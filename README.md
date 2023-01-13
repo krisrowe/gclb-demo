@@ -13,7 +13,7 @@ the steps here without any issues.
 Below are the only known circumstances where the steps in this guide could be insufficient or require
 adjustments:
 1. Differing organization-level security policies
-* Your organization-level policies on Google Cloud may very from those under which these steps were tested, thus potentially requiring additional steps if certain commands fail with contraint errors. 
+* Your organization-level policies on Google Cloud may vary from those under which these steps were tested, thus potentially requiring additional steps if certain commands fail with contraint errors. 
 2. Running against a pre-existing project
 * It would be ideal to create a new project for running the steps in this guide.
 * If running these commands against some existing project, there could be name collision, e.g. if a network named `default` already exists, in which case, a minor tweak may be needed, e.g. to choose an alternate network name. 
@@ -64,7 +64,7 @@ gcloud compute firewall-rules create default-allow-icmp --project=${PROJECT_ID} 
 ```
 gcloud compute firewall-rules create default-allow-ssh --project=${PROJECT_ID} --network=projects/${PROJECT_ID}/global/networks/${NETWORK_NAME} --description=Allows\ TCP\ connections\ from\ any\ source\ to\ any\ instance\ on\ the\ network\ using\ port\ 22. --direction=INGRESS --priority=65534 --source-ranges=0.0.0.0/0 --action=ALLOW --rules=tcp:22
 ```
-## Set up backend services on compute instances (VMs)
+## Set up backend service applications on compute instances (VMs)
 ### Ensure that Compute API is enabled on this project to allow for VMs to be created
 gcloud services enable compute --project=${PROJECT_ID}
 ### DEPRECATED (SKIP THIS): Give the Cloud Build service account permission to create compute instances.
@@ -85,8 +85,8 @@ This will be applicable when a new VM is spun up below and attempts to pull the 
 gsutil iam ch allusers:objectViewer gs://artifacts.${PROJECT_ID}.appspot.com
 ```
 ### Create a pair of VMs that run the container image
-* the argument --no-address ensure the VM does not have a public IP address 
-* the argument --shielded-secure-boot avoids error for violation of constraints/compute.requireShieldedVm
+* the argument `--no-address` ensures the VM does not have a public IP address 
+* the argument `--shielded-secure-boot` avoids error for violation of constraints/compute.requireShieldedVm
 ```
 gcloud compute instances create-with-container instance-1 \
     --container-image gcr.io/${PROJECT_ID}/stubbed-service \
